@@ -36,6 +36,7 @@ mod method_not_allowed;
 mod not_found;
 mod route;
 mod strip_prefix;
+mod uri_spec;
 
 pub(crate) use self::method_not_allowed::MethodNotAllowed;
 pub use self::{into_make_service::IntoMakeService, method_filter::MethodFilter, route::Route};
@@ -809,6 +810,12 @@ where
         }
 
         let path = req.uri().path().to_string();
+
+        for (_, route) in self.routes.iter() {
+            if true {
+                return RouterFuture::from_oneshot(route.clone().oneshot(req));
+            }
+        }
 
         match self.node.at(&path) {
             Ok(match_) => self.call_route(match_, req),
