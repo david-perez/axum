@@ -46,6 +46,26 @@ impl RequestSpec {
     }
 
     pub(super) fn matches<B>(&self, req: &Request<B>) -> Match {
+        let mut request_path_segments_iter = req.uri().path().split("/").filter(|s| !s.is_empty());
+        let request_path_idx = 0;
+
+        for path_segment in self.uri_spec.path_segments.iter() {
+            match request_path_segments_iter.next() {
+                // There are more path segments in the request spec, but we have reached the end of
+                // the request path.
+                None => return Match::No,
+                Some(request_path) => match path_segment {
+                    PathSegment::Literal(literal) => {
+                        if literal != request_path {
+                            return Match::No;
+                        }
+                    }
+                    PathSegment::Label => continue,
+                    PathSegment::Greedy => todo!(),
+                },
+            }
+        }
+
         Match::Yes
     }
 
