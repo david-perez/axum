@@ -1,7 +1,7 @@
 //! Routing between [`Service`]s and handlers.
 
-use self::future::RouterFuture;
 use self::not_found::NotFound;
+use self::{future::RouterFuture, request_spec::RequestSpec};
 use crate::{
     body::{box_body, Body, BoxBody},
     extract::{
@@ -34,9 +34,9 @@ mod into_make_service;
 mod method_filter;
 mod method_not_allowed;
 mod not_found;
+pub mod request_spec;
 mod route;
 mod strip_prefix;
-mod uri_spec;
 
 pub(crate) use self::method_not_allowed::MethodNotAllowed;
 pub use self::{into_make_service::IntoMakeService, method_filter::MethodFilter, route::Route};
@@ -108,7 +108,7 @@ where
         Self {
             routes: Default::default(),
             node: Default::default(),
-            fallback: Fallback::Default(Route::new(NotFound)),
+            fallback: Fallback::Default(Route::new(NotFound, RequestSpec::always_get())),
         }
     }
 
@@ -186,7 +186,7 @@ where
     /// ```
     ///
     /// Also panics if `path` is empty.
-    pub fn route<T>(mut self, path: &str, svc: T) -> Self
+    pub fn route<T>(mut self, request_spec: RequestSpec, svc: T) -> Self
     where
         T: Service<Request<B>, Response = Response<BoxBody>, Error = Infallible>
             + Clone
@@ -194,10 +194,6 @@ where
             + 'static,
         T::Future: Send + 'static,
     {
-        if path.is_empty() {
-            panic!("Invalid route: empty path");
-        }
-
         let svc = match try_downcast::<Router<B>, _>(svc) {
             Ok(_) => {
                 panic!("Invalid route: `Router::route` cannot be used with `Router`s. Use `Router::nest` instead")
@@ -207,186 +203,7 @@ where
 
         let id = RouteId::next();
 
-        if let Err(err) = self.node.insert(path, id) {
-            panic!("Invalid route: {}", err);
-        }
-
-        self.routes.insert(id, Route::new(svc));
-
-        self
-    }
-
-    /// Nest a group of routes (or a [`Service`]) at some path.
-    ///
-    /// This allows you to break your application into smaller pieces and compose
-    /// them together.
-    ///
-    /// ```
-    /// use axum::{
-    ///     routing::get,
-    ///     Router,
-    /// };
-    /// use http::Uri;
-    ///
-    /// async fn users_get(uri: Uri) {
-    ///     // `uri` will be `/users` since `nest` strips the matching prefix.
-    ///     // use `OriginalUri` to always get the full URI.
-    /// }
-    ///
-    /// async fn users_post() {}
-    ///
-    /// async fn careers() {}
-    ///
-    /// let users_api = Router::new().route("/users", get(users_get).post(users_post));
-    ///
-    /// let app = Router::new()
-    ///     .nest("/api", users_api)
-    ///     .route("/careers", get(careers));
-    /// # async {
-    /// # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
-    /// # };
-    /// ```
-    ///
-    /// Note that nested routes will not see the orignal request URI but instead
-    /// have the matched prefix stripped. This is necessary for services like static
-    /// file serving to work. Use [`OriginalUri`] if you need the original request
-    /// URI.
-    ///
-    /// Take care when using `nest` together with dynamic routes as nesting also
-    /// captures from the outer routes:
-    ///
-    /// ```
-    /// use axum::{
-    ///     extract::Path,
-    ///     routing::get,
-    ///     Router,
-    /// };
-    /// use std::collections::HashMap;
-    ///
-    /// async fn users_get(Path(params): Path<HashMap<String, String>>) {
-    ///     // Both `version` and `id` were captured even though `users_api` only
-    ///     // explicitly captures `id`.
-    ///     let version = params.get("version");
-    ///     let id = params.get("id");
-    /// }
-    ///
-    /// let users_api = Router::new().route("/users/:id", get(users_get));
-    ///
-    /// let app = Router::new().nest("/:version/api", users_api);
-    /// # async {
-    /// # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
-    /// # };
-    /// ```
-    ///
-    /// `nest` also accepts any [`Service`]. This can for example be used with
-    /// [`tower_http::services::ServeDir`] to serve static files from a directory:
-    ///
-    /// ```
-    /// use axum::{
-    ///     Router,
-    ///     routing::service_method_router::get,
-    ///     error_handling::HandleErrorExt,
-    ///     http::StatusCode,
-    /// };
-    /// use std::{io, convert::Infallible};
-    /// use tower_http::services::ServeDir;
-    ///
-    /// // Serves files inside the `public` directory at `GET /public/*`
-    /// let serve_dir_service = ServeDir::new("public")
-    ///     .handle_error(|error: io::Error| {
-    ///         (
-    ///             StatusCode::INTERNAL_SERVER_ERROR,
-    ///             format!("Unhandled internal error: {}", error),
-    ///         )
-    ///     });
-    ///
-    /// let app = Router::new().nest("/public", get(serve_dir_service));
-    /// # async {
-    /// # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
-    /// # };
-    /// ```
-    ///
-    /// # Differences to wildcard routes
-    ///
-    /// Nested routes are similar to wildcard routes. The difference is that
-    /// wildcard routes still see the whole URI whereas nested routes will have
-    /// the prefix stripped.
-    ///
-    /// ```rust
-    /// use axum::{routing::get, http::Uri, Router};
-    ///
-    /// let app = Router::new()
-    ///     .route("/foo/*rest", get(|uri: Uri| async {
-    ///         // `uri` will contain `/foo`
-    ///     }))
-    ///     .nest("/bar", get(|uri: Uri| async {
-    ///         // `uri` will _not_ contain `/bar`
-    ///     }));
-    /// # async {
-    /// # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
-    /// # };
-    /// ```
-    ///
-    /// # Panics
-    ///
-    /// - If the route overlaps with another route. See [`Router::route`]
-    /// for more details.
-    /// - If the route contains a wildcard (`*`).
-    /// - If `path` is empty.
-    ///
-    /// [`OriginalUri`]: crate::extract::OriginalUri
-    pub fn nest<T>(mut self, path: &str, svc: T) -> Self
-    where
-        T: Service<Request<B>, Response = Response<BoxBody>, Error = Infallible>
-            + Clone
-            + Send
-            + 'static,
-        T::Future: Send + 'static,
-    {
-        if path.is_empty() {
-            panic!("Invalid route: empty path");
-        }
-
-        if path.contains('*') {
-            panic!("Invalid route: nested routes cannot contain wildcards (*)");
-        }
-
-        let prefix = path;
-
-        match try_downcast::<Router<B>, _>(svc) {
-            // if the user is nesting a `Router` we can implement nesting
-            // by simplying copying all the routes and adding the prefix in
-            // front
-            Ok(router) => {
-                let Router {
-                    mut routes,
-                    node,
-                    fallback: _,
-                } = router;
-
-                for (id, nested_path) in node.paths {
-                    let route = routes.remove(&id).unwrap();
-                    let full_path = if &*nested_path == "/" {
-                        path.to_string()
-                    } else {
-                        format!("{}{}", path, nested_path)
-                    };
-                    self = self.route(&full_path, strip_prefix::StripPrefix::new(route, prefix));
-                }
-
-                debug_assert!(routes.is_empty());
-            }
-            // otherwise we add a wildcard route to the service
-            Err(svc) => {
-                let path = if path == "/" {
-                    format!("/*{}", NEST_TAIL_PARAM)
-                } else {
-                    format!("{}/*{}", path, NEST_TAIL_PARAM)
-                };
-
-                self = self.route(&path, strip_prefix::StripPrefix::new(svc, prefix));
-            }
-        }
+        self.routes.insert(id, Route::new(svc, request_spec));
 
         self
     }
@@ -458,42 +275,42 @@ where
     /// # axum::Server::bind(&"".parse().unwrap()).serve(app.into_make_service()).await.unwrap();
     /// # };
     /// ```
-    pub fn layer<L, LayeredReqBody, LayeredResBody>(self, layer: L) -> Router<LayeredReqBody>
-    where
-        L: Layer<Route<B>>,
-        L::Service: Service<
-                Request<LayeredReqBody>,
-                Response = Response<LayeredResBody>,
-                Error = Infallible,
-            > + Clone
-            + Send
-            + 'static,
-        <L::Service as Service<Request<LayeredReqBody>>>::Future: Send + 'static,
-        LayeredResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
-        LayeredResBody::Error: Into<BoxError>,
-    {
-        let layer = ServiceBuilder::new()
-            .layer_fn(Route::new)
-            .layer(MapResponseBodyLayer::new(box_body))
-            .layer(layer);
+    // pub fn layer<L, LayeredReqBody, LayeredResBody>(self, layer: L) -> Router<LayeredReqBody>
+    // where
+    //     L: Layer<Route<B>>,
+    //     L::Service: Service<
+    //             Request<LayeredReqBody>,
+    //             Response = Response<LayeredResBody>,
+    //             Error = Infallible,
+    //         > + Clone
+    //         + Send
+    //         + 'static,
+    //     <L::Service as Service<Request<LayeredReqBody>>>::Future: Send + 'static,
+    //     LayeredResBody: http_body::Body<Data = Bytes> + Send + Sync + 'static,
+    //     LayeredResBody::Error: Into<BoxError>,
+    // {
+    //     let layer = ServiceBuilder::new()
+    //         .layer_fn(|s| Route::new(s, UriSpec::always()))
+    //         .layer(MapResponseBodyLayer::new(box_body))
+    //         .layer(layer);
 
-        let routes = self
-            .routes
-            .into_iter()
-            .map(|(id, route)| {
-                let route = Layer::layer(&layer, route);
-                (id, route)
-            })
-            .collect::<HashMap<RouteId, Route<LayeredReqBody>>>();
+    //     let routes = self
+    //         .routes
+    //         .into_iter()
+    //         .map(|(id, route)| {
+    //             let route = Layer::layer(&layer, route);
+    //             (id, route)
+    //         })
+    //         .collect::<HashMap<RouteId, Route<LayeredReqBody>>>();
 
-        let fallback = self.fallback.map(|svc| Layer::layer(&layer, svc));
+    //     let fallback = self.fallback.map(|svc| Layer::layer(&layer, svc));
 
-        Router {
-            routes,
-            node: self.node,
-            fallback,
-        }
-    }
+    //     Router {
+    //         routes,
+    //         node: self.node,
+    //         fallback,
+    //     }
+    // }
 
     /// Convert this router into a [`MakeService`], that is a [`Service`] who's
     /// response is another service.
@@ -742,7 +559,7 @@ where
             + 'static,
         T::Future: Send + 'static,
     {
-        self.fallback = Fallback::Custom(Route::new(svc));
+        self.fallback = Fallback::Custom(Route::new(svc, RequestSpec::always_get()));
         self
     }
 
@@ -812,8 +629,12 @@ where
         let path = req.uri().path().to_string();
 
         for (_, route) in self.routes.iter() {
-            if true {
-                return RouterFuture::from_oneshot(route.clone().oneshot(req));
+            match route.matches(&req) {
+                request_spec::Match::Yes => {
+                    return RouterFuture::from_oneshot(route.clone().oneshot(req))
+                }
+                request_spec::Match::No => todo!(),
+                request_spec::Match::MethodNotAllowed => todo!(),
             }
         }
 

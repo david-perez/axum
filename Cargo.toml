@@ -44,6 +44,8 @@ tower-http = { version = "0.1", features = ["add-extension", "map-response-body"
 tower-layer = "0.3"
 tower-service = "0.3"
 
+derive_builder = "0.10"
+
 # optional dependencies
 base64 = { optional = true, version = "0.13" }
 headers = { optional = true, version = "0.3" }
