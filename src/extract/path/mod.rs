@@ -171,68 +171,68 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tests::*;
-    use crate::{routing::get, Router};
-    use std::collections::HashMap;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::tests::*;
+//     use crate::{routing::get, Router};
+//     use std::collections::HashMap;
 
-    #[tokio::test]
-    async fn percent_decoding() {
-        let app = Router::new().route(
-            "/:key",
-            get(|Path(param): Path<String>| async move { param }),
-        );
+//     #[tokio::test]
+//     async fn percent_decoding() {
+//         let app = Router::new().route(
+//             "/:key",
+//             get(|Path(param): Path<String>| async move { param }),
+//         );
 
-        let client = TestClient::new(app);
+//         let client = TestClient::new(app);
 
-        let res = client.get("/one%20two").send().await;
+//         let res = client.get("/one%20two").send().await;
 
-        assert_eq!(res.text().await, "one two");
-    }
+//         assert_eq!(res.text().await, "one two");
+//     }
 
-    #[tokio::test]
-    async fn supports_128_bit_numbers() {
-        let app = Router::new()
-            .route(
-                "/i/:key",
-                get(|Path(param): Path<i128>| async move { param.to_string() }),
-            )
-            .route(
-                "/u/:key",
-                get(|Path(param): Path<u128>| async move { param.to_string() }),
-            );
+//     #[tokio::test]
+//     async fn supports_128_bit_numbers() {
+//         let app = Router::new()
+//             .route(
+//                 "/i/:key",
+//                 get(|Path(param): Path<i128>| async move { param.to_string() }),
+//             )
+//             .route(
+//                 "/u/:key",
+//                 get(|Path(param): Path<u128>| async move { param.to_string() }),
+//             );
 
-        let client = TestClient::new(app);
+//         let client = TestClient::new(app);
 
-        let res = client.get("/i/123").send().await;
-        assert_eq!(res.text().await, "123");
+//         let res = client.get("/i/123").send().await;
+//         assert_eq!(res.text().await, "123");
 
-        let res = client.get("/u/123").send().await;
-        assert_eq!(res.text().await, "123");
-    }
+//         let res = client.get("/u/123").send().await;
+//         assert_eq!(res.text().await, "123");
+//     }
 
-    #[tokio::test]
-    async fn wildcard() {
-        let app = Router::new()
-            .route(
-                "/foo/*rest",
-                get(|Path(param): Path<String>| async move { param }),
-            )
-            .route(
-                "/bar/*rest",
-                get(|Path(params): Path<HashMap<String, String>>| async move {
-                    params.get("rest").unwrap().clone()
-                }),
-            );
+//     #[tokio::test]
+//     async fn wildcard() {
+//         let app = Router::new()
+//             .route(
+//                 "/foo/*rest",
+//                 get(|Path(param): Path<String>| async move { param }),
+//             )
+//             .route(
+//                 "/bar/*rest",
+//                 get(|Path(params): Path<HashMap<String, String>>| async move {
+//                     params.get("rest").unwrap().clone()
+//                 }),
+//             );
 
-        let client = TestClient::new(app);
+//         let client = TestClient::new(app);
 
-        let res = client.get("/foo/bar/baz").send().await;
-        assert_eq!(res.text().await, "/bar/baz");
+//         let res = client.get("/foo/bar/baz").send().await;
+//         assert_eq!(res.text().await, "/bar/baz");
 
-        let res = client.get("/bar/baz/qux").send().await;
-        assert_eq!(res.text().await, "/baz/qux");
-    }
-}
+//         let res = client.get("/bar/baz/qux").send().await;
+//         assert_eq!(res.text().await, "/baz/qux");
+//     }
+// }

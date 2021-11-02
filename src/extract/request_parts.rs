@@ -323,25 +323,25 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{body::Body, routing::post, tests::*, Router};
-    use http::StatusCode;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::{body::Body, routing::post, tests::*, Router};
+//     use http::StatusCode;
 
-    #[tokio::test]
-    async fn multiple_request_extractors() {
-        async fn handler(_: Request<Body>, _: Request<Body>) {}
+//     #[tokio::test]
+//     async fn multiple_request_extractors() {
+//         async fn handler(_: Request<Body>, _: Request<Body>) {}
 
-        let app = Router::new().route("/", post(handler));
+//         let app = Router::new().route("/", post(handler));
 
-        let client = TestClient::new(app);
+//         let client = TestClient::new(app);
 
-        let res = client.post("/").body("hi there").send().await;
-        assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(
-            res.text().await,
-            "Cannot have two request body extractors for a single handler"
-        );
-    }
-}
+//         let res = client.post("/").body("hi there").send().await;
+//         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
+//         assert_eq!(
+//             res.text().await,
+//             "Cannot have two request body extractors for a single handler"
+//         );
+//     }
+// }

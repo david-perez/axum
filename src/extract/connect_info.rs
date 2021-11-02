@@ -130,77 +130,77 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Server;
-    use crate::{routing::get, Router};
-    use std::net::{SocketAddr, TcpListener};
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::Server;
+//     use crate::{routing::get, Router};
+//     use std::net::{SocketAddr, TcpListener};
 
-    #[tokio::test]
-    async fn socket_addr() {
-        async fn handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
-            format!("{}", addr)
-        }
+//     #[tokio::test]
+//     async fn socket_addr() {
+//         async fn handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
+//             format!("{}", addr)
+//         }
 
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
+//         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+//         let addr = listener.local_addr().unwrap();
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            let app = Router::new().route("/", get(handler));
-            let server = Server::from_tcp(listener)
-                .unwrap()
-                .serve(app.into_make_service_with_connect_info::<SocketAddr, _>());
-            tx.send(()).unwrap();
-            server.await.expect("server error");
-        });
-        rx.await.unwrap();
+//         let (tx, rx) = tokio::sync::oneshot::channel();
+//         tokio::spawn(async move {
+//             let app = Router::new().route("/", get(handler));
+//             let server = Server::from_tcp(listener)
+//                 .unwrap()
+//                 .serve(app.into_make_service_with_connect_info::<SocketAddr, _>());
+//             tx.send(()).unwrap();
+//             server.await.expect("server error");
+//         });
+//         rx.await.unwrap();
 
-        let client = reqwest::Client::new();
+//         let client = reqwest::Client::new();
 
-        let res = client.get(format!("http://{}", addr)).send().await.unwrap();
-        let body = res.text().await.unwrap();
-        assert!(body.starts_with("127.0.0.1:"));
-    }
+//         let res = client.get(format!("http://{}", addr)).send().await.unwrap();
+//         let body = res.text().await.unwrap();
+//         assert!(body.starts_with("127.0.0.1:"));
+//     }
 
-    #[tokio::test]
-    async fn custom() {
-        #[derive(Clone, Debug)]
-        struct MyConnectInfo {
-            value: &'static str,
-        }
+//     #[tokio::test]
+//     async fn custom() {
+//         #[derive(Clone, Debug)]
+//         struct MyConnectInfo {
+//             value: &'static str,
+//         }
 
-        impl Connected<&AddrStream> for MyConnectInfo {
-            fn connect_info(_target: &AddrStream) -> Self {
-                Self {
-                    value: "it worked!",
-                }
-            }
-        }
+//         impl Connected<&AddrStream> for MyConnectInfo {
+//             fn connect_info(_target: &AddrStream) -> Self {
+//                 Self {
+//                     value: "it worked!",
+//                 }
+//             }
+//         }
 
-        async fn handler(ConnectInfo(addr): ConnectInfo<MyConnectInfo>) -> &'static str {
-            addr.value
-        }
+//         async fn handler(ConnectInfo(addr): ConnectInfo<MyConnectInfo>) -> &'static str {
+//             addr.value
+//         }
 
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
+//         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+//         let addr = listener.local_addr().unwrap();
 
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            let app = Router::new().route("/", get(handler));
-            let server = Server::from_tcp(listener)
-                .unwrap()
-                .serve(app.into_make_service_with_connect_info::<MyConnectInfo, _>());
-            tx.send(()).unwrap();
-            server.await.expect("server error");
-        });
-        rx.await.unwrap();
+//         let (tx, rx) = tokio::sync::oneshot::channel();
+//         tokio::spawn(async move {
+//             let app = Router::new().route("/", get(handler));
+//             let server = Server::from_tcp(listener)
+//                 .unwrap()
+//                 .serve(app.into_make_service_with_connect_info::<MyConnectInfo, _>());
+//             tx.send(()).unwrap();
+//             server.await.expect("server error");
+//         });
+//         rx.await.unwrap();
 
-        let client = reqwest::Client::new();
+//         let client = reqwest::Client::new();
 
-        let res = client.get(format!("http://{}", addr)).send().await.unwrap();
-        let body = res.text().await.unwrap();
-        assert_eq!(body, "it worked!");
-    }
-}
+//         let res = client.get(format!("http://{}", addr)).send().await.unwrap();
+//         let body = res.text().await.unwrap();
+//         assert_eq!(body, "it worked!");
+//     }
+// }
