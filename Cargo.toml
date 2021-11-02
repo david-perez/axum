@@ -45,6 +45,8 @@ tower-layer = "0.3"
 tower-service = "0.3"
 
 derive_builder = "0.10"
+regex = "1.5"
+thiserror = "1.0"
 
 # optional dependencies
 base64 = { optional = true, version = "0.13" }
